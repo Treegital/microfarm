@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+
+message CreateAccount {
+    string email = 1;
+    bytes password = 2;
+}
+
+
+message CreateCertificate {
+    string account = 1;
+    bytes pem_private_key = 2;
+    bytes pem_cert = 3;
+    bytes pem_chain = 4;
+    bytes encrypted_password = 5;
+}
+
+
+message RevokeCertificate {
+    string serial_number = 1;
+    string reason = 2;
+}

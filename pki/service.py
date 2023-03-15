@@ -26,45 +26,8 @@ def create_connection():
 def certificate_subservice(pki: PKI):
     connection = create_connection()
     try:
-        ch_input = connection.channel()
-        ch_output = connection.channel()
-        ch_input.exchange_declare(
-            'service.pki',
-            exchange_type='topic',
-            durable=False,
-            auto_delete=False
-        )
-        ch_input.queue_declare(
-            queue="pki.certificate",
-            durable=True,
-            exclusive=False,
-            auto_delete=False
-        )
-        ch_input.queue_bind(
-            exchange='service.pki',
-            queue="pki.certificate",
-            routing_key="pki.certificate.create"
-        )
-
-        ch_output.exchange_declare(
-            'service.persistence',
-            exchange_type='topic',
-            durable=False,
-            auto_delete=False
-        )
-        ch_output.queue_declare(
-            queue="persistence.certificate",
-            durable=True,
-            exclusive=False,
-            auto_delete=False
-        )
-        ch_output.queue_bind(
-            exchange='service.persistence',
-            queue="persistence.certificate",
-            routing_key="persistence.certificate.create"
-        )
-
-        generator = ch_input.consume("pki.certificate", inactivity_timeout=2)
+        channel = connection.channel()
+        generator = channel.consume("pki.certificate", inactivity_timeout=2)
         for method_frame, properties, body in generator:
             if (method_frame, properties, body) == (None, None, None):
                 # Inactivity : Check for flag
@@ -87,7 +50,7 @@ def certificate_subservice(pki: PKI):
                     'valid_from': bundle.certificate.not_valid_before,
                     'valid_until': bundle.certificate.not_valid_after
                 }
-                ch_output.basic_publish(
+                channel.basic_publish(
                     exchange='service.persistence',
                     routing_key='persistence.certificate.create',
                     body=ormsgpack.packb(result),
@@ -95,7 +58,7 @@ def certificate_subservice(pki: PKI):
                         content_type='application/json',
                         delivery_mode=pika.DeliveryMode.Transient)
                 )
-                ch_input.basic_ack(method_frame.delivery_tag)
+                channel.basic_ack(method_frame.delivery_tag)
     finally:
         if connection.is_open:
             connection.close()

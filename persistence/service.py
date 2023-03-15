@@ -49,27 +49,8 @@ def persistence_service():
 
     connection = create_connection()
     try:
-        ch_input = connection.channel()
-        ch_output = connection.channel()
-        ch_input.exchange_declare(
-            'service.persistence',
-            exchange_type='topic',
-            durable=False,
-            auto_delete=False
-        )
-        ch_input.queue_declare(
-            queue="persistence.certificate",
-            durable=True,
-            exclusive=False,
-            auto_delete=False
-        )
-        ch_input.queue_bind(
-            exchange='service.persistence',
-            queue="persistence.certificate",
-            routing_key="persistence.certificate.*"
-        )
-
-        generator = ch_input.consume("persistence.certificate", inactivity_timeout=2)
+        channel = connection.channel()
+        generator = channel.consume("persistence.certificate", inactivity_timeout=2)
         for method_frame, properties, body in generator:
             if (method_frame, properties, body) == (None, None, None):
                 # Inactivity : Check for flag
@@ -81,7 +62,7 @@ def persistence_service():
                     with db.atomic():
                         result = method(body)
                     print(f'got {result} to persist.')
-                    ch_output.basic_publish(
+                    channel.basic_publish(
                         exchange='service.mailing',
                         routing_key='mailing.notifier',
                         body='This is the emailer',
@@ -89,10 +70,10 @@ def persistence_service():
                             content_type='application/json',
                             delivery_mode=pika.DeliveryMode.Transient)
                     )
-                    ch_input.basic_ack(method_frame.delivery_tag)
+                    channel.basic_ack(method_frame.delivery_tag)
                 except Exception as exc:
                     print(exc)
-                    ch_input.basic_ack(method_frame.delivery_tag)
+                    channel.basic_ack(method_frame.delivery_tag)
 
     finally:
         if connection.is_open:

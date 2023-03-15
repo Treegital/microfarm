@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+
+message EmailNotification {
+  repeated string recipients = 1;
+  string subject = 2;
+  string text = 3;
+  optional string html = 4;
+}

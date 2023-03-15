@@ -28,28 +28,9 @@ def create_connection():
 
 
 def emailer_service(workers):
-
     connection = create_connection()
     try:
         channel = connection.channel()
-        channel.exchange_declare(
-            'service.mailing',
-            exchange_type='topic',
-            durable=False,
-            auto_delete=False
-        )
-        channel.queue_declare(
-            queue="mailing",
-            durable=True,
-            exclusive=False,
-            auto_delete=False
-        )
-        channel.queue_bind(
-            exchange='service.mailing',
-            queue="mailing",
-            routing_key="mailing.*"
-        )
-
         generator = channel.consume("mailing")
         for method_frame, properties, body in generator:
             worker, config = workers[method_frame.routing_key]

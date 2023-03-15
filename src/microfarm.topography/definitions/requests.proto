@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+
+message RegistrationRequest {
+    string email = 1;
+    bytes password = 2;
+}
+
+
+message TokenRequest {
+    string email = 1;
+}
+
+
+message RegistrationValidation {
+    string email = 1;
+    string token = 2;
+}
+
+
+message CertificateCreationRequest {
+    string user = 1;
+    string identity = 2;
+}
+
+
+message CertificateRevocationRequest {
+    string user = 1;
+    string serial = 2;
+    string reason = 3;
+}
