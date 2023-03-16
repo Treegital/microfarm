@@ -1,0 +1,4 @@
+pika
+pyyaml
+minicli
+-e git+ssh://github.com/Treegital/microfarm.messaging.git#egg=microfarm.messaging

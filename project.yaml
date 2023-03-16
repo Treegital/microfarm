@@ -1,0 +1,69 @@
+credentials:
+
+  host: "localhost"
+  user: "guest"
+  password: "guest"
+
+
+topology:
+
+  exchanges:
+
+    service.mailing:
+      exchange_type: "topic"
+      durable: false
+      auto_delete: false
+
+    service.persistence:
+      exchange_type: "topic"
+      durable: false
+      auto_delete: false
+
+    service.pki:
+      exchange_type: "topic"
+      durable: false
+      auto_delete: false
+
+  queues:
+
+      mailing:
+        durable : false
+        exclusive : false
+        auto_delete : false
+
+      pki.certificate:
+        durable: false
+        exclusive: false
+        auto_delete: false
+
+      persistence.account:
+        durable: false
+        exclusive: false
+        auto_delete: false
+
+      persistence.certificate:
+        durable: false
+        exclusive: false
+        auto_delete: false
+
+  bindings:
+
+        -
+          exchange: "service.mailing"
+          queue: "mailing"
+          routing_key: "mailing.*"
+
+        -
+          exchange: "service.pki"
+          queue: "pki.certificate"
+          routing_key: "pki.certificate.*"
+
+        -
+          exchange: "service.persistence"
+          queue: "persistence.certificate"
+          routing_key: "persistence.certificate.*"
+
+        -
+          exchange: "service.persistence"
+          queue: "persistence.account"
+          routing_key: "persistence.account.*"

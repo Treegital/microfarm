@@ -1,6 +1,6 @@
 import pika
 import pika.exceptions
-import orjson
+from microfarm.messaging import RegistrationRequest
 
 
 credentials = pika.PlainCredentials('guest', 'guest')
