@@ -1,92 +1,20 @@
 import pika
+import yaml
+from pathlib import Path
 
 
-credentials = pika.PlainCredentials("guest", "guest")
-parameters = pika.ConnectionParameters(
-    "localhost", credentials=credentials
-)
-connection = pika.BlockingConnection(parameters)
+def create_connection(user: str, password: str, host: str):
+    credentials = pika.PlainCredentials(user, password)
+    parameters = pika.ConnectionParameters(
+        host, credentials=credentials
+    )
+    connection = pika.BlockingConnection(parameters)
+    return connection
 
 
-channel = connection.channel()
+config = Path(__file__).parent / "topology.yaml"
+with config.open('r') as fd:
+     topology = yaml.load(fd, Loader=yaml.Loader)
 
-
-channel.exchange_declare(
-    'service.mailing',
-    exchange_type='topic',
-    durable=False,
-    auto_delete=False
-)
-
-channel.queue_declare(
-    queue="mailing",
-    durable=True,
-    exclusive=False,
-    auto_delete=False
-)
-
-channel.queue_bind(
-    exchange='service.mailing',
-    queue="mailing",
-    routing_key="mailing.*"
-)
-
-channel.exchange_declare(
-    'service.persistence',
-    exchange_type='topic',
-    durable=False,
-    auto_delete=False
-)
-
-channel.queue_declare(
-    queue="persistence.certificate",
-    durable=True,
-    exclusive=False,
-    auto_delete=False
-)
-
-channel.queue_bind(
-    exchange='service.persistence',
-    queue="persistence.certificate",
-    routing_key="persistence.certificate.*"
-)
-
-channel.exchange_declare(
-    'service.pki',
-    exchange_type='topic',
-    durable=False,
-    auto_delete=False
-)
-
-channel.queue_declare(
-    queue="pki.certificate",
-    durable=True,
-    exclusive=False,
-    auto_delete=False
-)
-
-channel.queue_bind(
-    exchange='service.pki',
-    queue="pki.certificate",
-    routing_key="pki.certificate.create"
-)
-
-channel.exchange_declare(
-    'service.persistence',
-    exchange_type='topic',
-    durable=False,
-    auto_delete=False
-)
-
-channel.queue_declare(
-    queue="persistence.certificate",
-    durable=True,
-    exclusive=False,
-    auto_delete=False
-)
-
-channel.queue_bind(
-    exchange='service.persistence',
-    queue="persistence.certificate",
-    routing_key="persistence.certificate.create"
-)
+import pdb
+pdb.set_trace()
