@@ -3,3 +3,6 @@
 -e git+ssh://github.com/Treegital/microfarm.jwt.git#egg=microfarm.jwt
 -e git+ssh://github.com/Treegital/microfarm.accounts.git#egg=microfarm.accounts
 -e git+ssh://github.com/Treegital/microfarm.courrier.git#egg=microfarm.courrier
+
+-e git+ssh://github.com/Treegital/branding_iron.git#egg=branding_iron
+-e git+ssh://github.com/HorsemanWSGI/postrider.git#egg=postrider
