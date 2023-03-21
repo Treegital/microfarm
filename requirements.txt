@@ -1,4 +1,5 @@
-pika
-pyyaml
-minicli
--e git+ssh://github.com/Treegital/microfarm.messaging.git#egg=microfarm.messaging
+-e git+ssh://github.com/Treegital/microfarm.websockets.git#egg=microfarm.websockets
+-e git+ssh://github.com/Treegital/microfarm.pki.git#egg=microfarm.pki
+-e git+ssh://github.com/Treegital/microfarm.jwt.git#egg=microfarm.jwt
+-e git+ssh://github.com/Treegital/microfarm.accounts.git#egg=microfarm.accounts
+-e git+ssh://github.com/Treegital/microfarm.courrier.git#egg=microfarm.courrier
