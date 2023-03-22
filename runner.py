@@ -14,24 +14,35 @@ async def jwt():
 @cli
 async def account():
     client = await aiozmq.rpc.connect_rpc(connect='tcp://127.0.0.1:5556')
+
+    response = await client.call.create_account({
+        "email": "testtest",
+    })
+    assert response == {
+        'password': ('Missing data for required field.',),
+        'email': ('Not a valid email address.',)
+    }
+
     response = await client.call.create_account({
         "email": "test@test.com",
         "password": "toto"
     })
     token = response['otp']
+
     response = await client.call.verify_account("test@test.com", 'ABC')
     assert response == {'err': 'Invalid token'}
 
     response = await client.call.request_account_token("test@test.com")
     token = response['otp']
+
     response = await client.call.verify_account("test@test.com", token)
-    assert response is True
+    assert 'email' in response
 
     response = await client.call.verify_credentials("test@test.com", "toto")
-    assert response == {'email': "test@test.com"}
+    assert 'email' in response
 
     response = await client.call.verify_credentials("test@test.com", "titi")
-    assert response is None
+    assert response == {'err': 'Credentials failed.'}
 
     client.close()
 
