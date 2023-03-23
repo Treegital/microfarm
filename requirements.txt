@@ -1,3 +1,5 @@
+sanic
+sanic[ext]
 -e git+ssh://github.com/Treegital/microfarm.websockets.git#egg=microfarm_websockets
 -e git+ssh://github.com/Treegital/microfarm.pki.git#egg=microfarm_pki
 -e git+ssh://github.com/Treegital/microfarm.jwt.git#egg=microfarm_jwt
