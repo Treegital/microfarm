@@ -1,0 +1,95 @@
+import pydantic
+import typing as t
+from sanic.response import json
+from sanic_ext import validate, openapi
+from sanic import Blueprint
+from cryptography import x509
+from functools import cached_property
+
+
+routes = Blueprint('certificate')
+
+
+reverse_oid_lookup = {
+    v: k for k, v in vars(x509.oid.NameOID).items()
+    if not k.startswith('_')
+}
+
+
+class RevocationRequest(pydantic.BaseModel):
+    reason: x509.ReasonFlags
+
+
+class Identity(pydantic.BaseModel):
+
+    class Config:
+        allow_mutation = False
+        keep_untouched = (cached_property,)
+
+    common_name: str
+    email_address : t.Optional[pydantic.EmailStr] = None
+    business_category : t.Optional[str] = None
+    country_name : t.Optional[str] = None
+    dn_qualifier : t.Optional[str] = None
+    domain_component : t.Optional[str] = None
+    generation_qualifier : t.Optional[str] = None
+    given_name : t.Optional[str] = None
+    inn : t.Optional[str] = None
+    jurisdiction_country_name : t.Optional[str] = None
+    jurisdiction_locality_name : t.Optional[str] = None
+    jurisdiction_state_or_province_name : t.Optional[str] = None
+    locality_name : t.Optional[str] = None
+    ogrn : t.Optional[str] = None
+    organizational_unit_name : t.Optional[str] = None
+    organization_name : t.Optional[str] = None
+    postal_address : t.Optional[str] = None
+    postal_code : t.Optional[str] = None
+    pseudonym : t.Optional[str] = None
+    serial_number : t.Optional[str] = None
+    snils : t.Optional[str] = None
+    state_or_province_name : t.Optional[str] = None
+    street_address : t.Optional[str] = None
+    surname : t.Optional[str] = None
+    title : t.Optional[str] = None
+    unstructured_name : t.Optional[str] = None
+    user_id : t.Optional[str] = None
+    x500_unique_identifier : t.Optional[str] = None
+
+    @cached_property
+    def x509_name(self) -> x509.Name:
+        return x509.Name([
+            x509.NameAttribute(
+                getattr(x509.oid.NameOID, name.upper()),
+                value
+            )
+            for name, value in self.dict().items()
+            if value is not None
+        ])
+
+    @cached_property
+    def rfc4514_string(self):
+        return self.x509_name.rfc4514_string()
+
+    @classmethod
+    def from_rfc4514_string(cls, value: str):
+        name = x509.Name.from_rfc4514_string(value)
+        values = {
+            reverse_oid_lookup[attr.oid].lower(): attr.value
+            for attr in name
+            if attr.oid in reverse_oid_lookup
+        }
+        return cls(**values)
+
+
+@routes.post("/certificates/new")
+@openapi.definition(
+    body={'application/json': Identity.schema()},
+)
+@validate(json=Identity)
+async def new_certificate(request, body: Identity):
+    async with request.app.ctx.pki() as service:
+        response = await service.generate_certificate(
+            request.ctx.user.id,
+            body.rfc4514_string
+        )
+    return json(response)

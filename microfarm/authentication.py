@@ -1,9 +1,17 @@
 import jwt
+from dataclasses import dataclass
 from pathlib import Path
 from sanic import Blueprint, HTTPResponse
 
 
 authentication = Blueprint("auth")
+
+
+@dataclass
+class User:
+    id: str
+    email: str
+    metadata: dict
 
 
 @authentication.listener("before_server_start")
@@ -14,12 +22,7 @@ async def setup_jwt_key(app):
         app.config['jwt_public_key'] = fd.read()
 
 
-@authentication.middleware("request", priority=99)
 async def jwt_auth(request):
-    namespace, *_ = request.path.lstrip('/').split('/', 1)
-    if namespace in ('register', 'login', 'docs'):
-        return
-
     auth = request.headers.get('Authorization')
     if auth is None:
         return HTTPResponse(status=401)
@@ -29,10 +32,15 @@ async def jwt_auth(request):
         return HTTPResponse(status=403)
 
     try:
-        request.ctx.user = jwt.decode(
+        userdata = jwt.decode(
             token,
             request.app.config['jwt_public_key'],
             algorithms=["RS256"]
+        )
+        request.ctx.user = User(
+            id=userdata['id'],
+            email=userdata['email'],
+            metadata=userdata
         )
     except jwt.exceptions.InvalidTokenError:
         # generic error, it catches all invalidities
