@@ -8,7 +8,7 @@ from .certificate import routes as certificate_routes
 
 public_routes = Blueprint.group(register_routes)
 secured_routes = Blueprint.group(certificate_routes)
-#secured_routes.middleware(jwt_auth, priority=99)
+secured_routes.middleware(jwt_auth, priority=99)
 
 
 app = Sanic("Microfarm")
