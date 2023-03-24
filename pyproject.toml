@@ -14,6 +14,7 @@ dependencies = [
   "aiozmq",
   "pydantic",
   "pydantic[email]",
+  "wrapt",
   "pyjwt",
   "sanic",
   "sanic[ext]",

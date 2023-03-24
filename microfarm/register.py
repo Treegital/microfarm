@@ -1,7 +1,8 @@
 import pydantic
 from sanic.response import json
-from sanic_ext import validate, openapi
+from sanic_ext import openapi
 from sanic import Blueprint
+from .validation import validate_json
 
 
 routes = Blueprint("register")
@@ -30,7 +31,7 @@ class TokenRequest(pydantic.BaseModel):
 @openapi.definition(
     body={'application/json': Registration.schema()},
 )
-@validate(json=Registration)
+@validate_json(Registration)
 async def register(request, body: Registration):
     async with request.app.ctx.accounts() as service:
         response = await service.create_account(body.dict())
@@ -41,7 +42,7 @@ async def register(request, body: Registration):
 @openapi.definition(
     body={'application/json': AccountVerification.schema()},
 )
-@validate(json=AccountVerification)
+@validate_json(AccountVerification)
 async def verify(request, body: AccountVerification):
     async with request.app.ctx.accounts() as service:
         response = await service.verify_account(
@@ -55,7 +56,7 @@ async def verify(request, body: AccountVerification):
 @openapi.definition(
     body={'application/json': TokenRequest.schema()},
 )
-@validate(json=TokenRequest)
+@validate_json(TokenRequest)
 async def request_verification_token(request, body: TokenRequest):
     async with request.app.ctx.accounts() as service:
         response = await service.request_account_token(body.email)
@@ -66,7 +67,7 @@ async def request_verification_token(request, body: TokenRequest):
 @openapi.definition(
     body={'application/json': Login.schema()},
 )
-@validate(json=Login)
+@validate_json(Login)
 async def login(request, body: Login):
     async with request.app.ctx.accounts() as service:
         response = await service.verify_credentials(

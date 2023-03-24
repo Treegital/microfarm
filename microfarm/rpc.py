@@ -1,4 +1,5 @@
 import asyncio
+import pydantic
 from aiozmq import rpc
 from sanic import Blueprint
 from sanic.exceptions import SanicException
@@ -6,6 +7,12 @@ from contextlib import asynccontextmanager
 
 
 rpcservices = Blueprint('rpcservices')
+
+
+class RPCUnavailableError(pydantic.BaseModel):
+    status: int
+    description: str
+    message: str
 
 
 def rpcservice(name: str, bind: str):

@@ -1,3 +1,4 @@
+import uuid
 import pydantic
 import typing as t
 from sanic.response import json
@@ -5,6 +6,8 @@ from sanic_ext import validate, openapi
 from sanic import Blueprint
 from cryptography import x509
 from functools import cached_property
+from .rpc import RPCUnavailableError
+from .validation import validate_json, validation_errors_definition
 
 
 routes = Blueprint('certificate')
@@ -18,6 +21,10 @@ reverse_oid_lookup = {
 
 class RevocationRequest(pydantic.BaseModel):
     reason: x509.ReasonFlags
+
+
+class CertificateRequestResponse(pydantic.BaseModel):
+    request: uuid.UUID
 
 
 class Identity(pydantic.BaseModel):
@@ -83,9 +90,24 @@ class Identity(pydantic.BaseModel):
 
 @routes.post("/certificates/new")
 @openapi.definition(
+    secured="token",
     body={'application/json': Identity.schema()},
+    response=[
+        openapi.definitions.Response(
+            {"application/json" : CertificateRequestResponse.schema()},
+            status=200
+        ),
+        openapi.definitions.Response(
+            {"application/json" : validation_errors_definition},
+            status=422
+        ),
+        openapi.definitions.Response(
+            {"application/json" : RPCUnavailableError.schema()},
+            status=503
+        )
+    ]
 )
-@validate(json=Identity)
+@validate_json(Identity)
 async def new_certificate(request, body: Identity):
     async with request.app.ctx.pki() as service:
         response = await service.generate_certificate(
