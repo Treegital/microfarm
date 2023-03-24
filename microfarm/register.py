@@ -32,8 +32,8 @@ class TokenRequest(pydantic.BaseModel):
 )
 @validate(json=Registration)
 async def register(request, body: Registration):
-    async with app.ctx.accounts() as service:
-        response = await service.create_account(asdict(body))
+    async with request.app.ctx.accounts() as service:
+        response = await service.create_account(body.dict())
     return json(response)
 
 
@@ -43,7 +43,7 @@ async def register(request, body: Registration):
 )
 @validate(json=AccountVerification)
 async def verify(request, body: AccountVerification):
-    async with app.ctx.accounts() as service:
+    async with request.app.ctx.accounts() as service:
         response = await service.verify_account(
             body.email,
             body.token
@@ -57,7 +57,7 @@ async def verify(request, body: AccountVerification):
 )
 @validate(json=TokenRequest)
 async def request_verification_token(request, body: TokenRequest):
-    async with app.ctx.accounts() as service:
+    async with request.app.ctx.accounts() as service:
         response = await service.request_account_token(body.email)
     return json(response)
 
@@ -68,11 +68,11 @@ async def request_verification_token(request, body: TokenRequest):
 )
 @validate(json=Login)
 async def login(request, body: Login):
-    async with app.ctx.accounts() as service:
+    async with request.app.ctx.accounts() as service:
         response = await service.verify_credentials(
             body.email,
             body.password
         )
-    async with app.ctx.jwt() as service:
+    async with request.app.ctx.jwt() as service:
         response = await service.get_token(response)
     return json(response)
