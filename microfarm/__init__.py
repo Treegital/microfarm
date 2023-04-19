@@ -1,4 +1,5 @@
 from sanic import Sanic, Blueprint
+from sanic_ext import Extend
 from .rpc import rpcservices
 from .listeners import listeners
 from .middlewares import jwt_auth
@@ -12,6 +13,9 @@ secured_routes.middleware(jwt_auth, priority=99)
 
 
 app = Sanic("Microfarm")
+app.config.CORS_ORIGINS = "*"
+Extend(app)
+
 app.blueprint(listeners)
 app.blueprint(rpcservices)
 app.blueprint(public_routes)

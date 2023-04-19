@@ -42,7 +42,7 @@ def validate_json(model: pydantic.BaseModel):
             raise SanicException("Request could not be found")
 
         try:
-            item = model(**request.json)
+            item = model(**(request.json or {}))
         except pydantic.ValidationError as err:
             return json(err.errors(), status=422)
 

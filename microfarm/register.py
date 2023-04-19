@@ -3,6 +3,7 @@ from sanic.response import json
 from sanic_ext import openapi
 from sanic import Blueprint
 from .validation import validate_json
+from .rpc import RPCResponse
 
 
 routes = Blueprint("register")
@@ -10,6 +11,7 @@ routes = Blueprint("register")
 
 class Registration(pydantic.BaseModel):
     email: pydantic.EmailStr
+    name: str
     password: str
 
 
@@ -34,8 +36,8 @@ class TokenRequest(pydantic.BaseModel):
 @validate_json(Registration)
 async def register(request, body: Registration):
     async with request.app.ctx.accounts() as service:
-        response = await service.create_account(body.dict())
-    return json(response)
+        data = await service.create_account(body.dict())
+    return RPCResponse(**data).json_response()
 
 
 @routes.post("/register/verify")
@@ -45,11 +47,11 @@ async def register(request, body: Registration):
 @validate_json(AccountVerification)
 async def verify(request, body: AccountVerification):
     async with request.app.ctx.accounts() as service:
-        response = await service.verify_account(
+        data = await service.verify_account(
             body.email,
             body.token
         )
-    return json(response)
+    return RPCResponse(**data).json_response()
 
 
 @routes.post("/register/token")
@@ -59,8 +61,8 @@ async def verify(request, body: AccountVerification):
 @validate_json(TokenRequest)
 async def request_verification_token(request, body: TokenRequest):
     async with request.app.ctx.accounts() as service:
-        response = await service.request_account_token(body.email)
-    return json(response)
+        data = await service.request_account_token(body.email)
+    return RPCResponse(**data).json_response()
 
 
 @routes.post("/login")
@@ -70,10 +72,15 @@ async def request_verification_token(request, body: TokenRequest):
 @validate_json(Login)
 async def login(request, body: Login):
     async with request.app.ctx.accounts() as service:
-        response = await service.verify_credentials(
+        data = await service.verify_credentials(
             body.email,
             body.password
         )
+    creds_response = RPCResponse(**data)
+    if creds_response.code != 200:
+        return creds_response.json_response()
+
     async with request.app.ctx.jwt() as service:
-        response = await service.get_token(response)
-    return json(response)
+        data = await service.get_token(creds_response.data)
+
+    return RPCResponse(**data).json_response()

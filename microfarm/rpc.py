@@ -1,7 +1,23 @@
+"""
+RPC Services
+------------
+
+return codes:
+
+  100-199 -> Informational content
+  200-299 -> Success
+  300-399 -> Further action is needed
+  400-499 -> Input error (erroneous data received)
+  500-599 -> Output error (an error occured while processing the data)
+  600-699 -> Database-related error
+"""
+
 import asyncio
 import pydantic
+import typing as t
 from aiozmq import rpc
 from sanic import Blueprint
+from sanic.response import json
 from sanic.exceptions import SanicException
 from contextlib import asynccontextmanager
 
@@ -13,6 +29,26 @@ class RPCUnavailableError(pydantic.BaseModel):
     status: int
     description: str
     message: str
+
+
+class RPCResponse(pydantic.BaseModel):
+    code: int = pydantic.Field(ge=99, le=700)
+    message: str = ''
+    data: dict = pydantic.Field(default_factory=dict)
+
+    def json_response(self):
+        body = {
+            'message': self.message,
+            'data': self.data
+        }
+        if self.code < 400:
+            return json(body, status=200)
+        if self.code < 500:
+            return json(body, status=422)
+        if self.code < 600:
+            return json(body, status=502)
+        if self.code < 700:
+            return json(body, status=502)
 
 
 def rpcservice(name: str, bind: str):
