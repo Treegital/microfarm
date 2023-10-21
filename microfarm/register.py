@@ -29,6 +29,7 @@ class TokenRequest(pydantic.BaseModel):
     email: pydantic.EmailStr
 
 
+
 @routes.post("/register")
 @openapi.definition(
     body={'application/json': Registration.schema()},
@@ -37,7 +38,16 @@ class TokenRequest(pydantic.BaseModel):
 async def register(request, body: Registration):
     async with request.app.ctx.accounts() as service:
         data = await service.create_account(body.dict())
-    return RPCResponse(**data).json_response()
+    response = RPCResponse(**data)
+    if response.success:
+         async with request.app.ctx.courrier() as service:
+             data = await service.send_email(
+                 "notifier",
+                 [body.email],
+                 "Certifarm: registration",
+                 f"this is your validation code: {response.data['otp']}"
+             )
+    return response.json_response()
 
 
 @routes.post("/register/verify")
@@ -77,10 +87,14 @@ async def login(request, body: Login):
             body.password
         )
     creds_response = RPCResponse(**data)
-    if creds_response.code != 200:
+    if not creds_response.success:
         return creds_response.json_response()
 
     async with request.app.ctx.jwt() as service:
         data = await service.get_token(creds_response.data)
 
-    return RPCResponse(**data).json_response()
+    jwt_response = RPCResponse(**data)
+    if jwt_response.success:
+        jwt_response.data['identity'] = creds_response.data
+
+    return jwt_response.json_response()

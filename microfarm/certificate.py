@@ -6,7 +6,7 @@ from sanic_ext import validate, openapi
 from sanic import Blueprint
 from cryptography import x509
 from functools import cached_property
-from .rpc import RPCUnavailableError
+from .rpc import RPCUnavailableError, RPCResponse
 from .validation import validate_json, validation_errors_definition
 
 
@@ -17,6 +17,17 @@ reverse_oid_lookup = {
     v: k for k, v in vars(x509.oid.NameOID).items()
     if not k.startswith('_')
 }
+
+
+class FieldOrdering(pydantic.BaseModel):
+    key: str
+    order: t.Literal['asc'] | t.Literal['desc']
+
+
+class CertificatesListing(pydantic.BaseModel):
+    offset: t.Optional[int] = 0
+    limit: t.Optional[int] = 0
+    sort_by: t.List[FieldOrdering] = []
 
 
 class RevocationRequest(pydantic.BaseModel):
@@ -110,8 +121,20 @@ class Identity(pydantic.BaseModel):
 @validate_json(Identity)
 async def new_certificate(request, body: Identity):
     async with request.app.ctx.pki() as service:
-        response = await service.generate_certificate(
+        data = await service.generate_certificate(
             request.ctx.user.id,
             body.rfc4514_string
         )
-    return json(response)
+    return RPCResponse(**data).json_response()
+
+
+@routes.post("/certificates")
+@openapi.definition(
+    secured="token",
+)
+@validate_json(CertificatesListing)
+async def all_certificates(request, body: CertificatesListing):
+    async with request.app.ctx.pki() as service:
+        args = body.dict()
+        data = await service.account_certificates(request.ctx.user.id, **args)
+    return RPCResponse(**data).json_response()

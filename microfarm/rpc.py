@@ -27,8 +27,8 @@ rpcservices = Blueprint('rpcservices')
 
 class RPCUnavailableError(pydantic.BaseModel):
     status: int
-    description: str
     message: str
+    description: str
 
 
 class RPCResponse(pydantic.BaseModel):
@@ -49,6 +49,18 @@ class RPCResponse(pydantic.BaseModel):
             return json(body, status=502)
         if self.code < 700:
             return json(body, status=502)
+
+    @property
+    def success(self):
+        return self.code >= 200 and self.code <= 299
+
+    @property
+    def pending(self):
+        return self.code >= 300 and self.code <= 399
+
+    @property
+    def error(self):
+        return self.code >= 400
 
 
 def rpcservice(name: str, bind: str):
