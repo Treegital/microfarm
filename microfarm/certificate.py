@@ -138,3 +138,13 @@ async def all_certificates(request, body: CertificatesListing):
         args = body.dict()
         data = await service.account_certificates(request.ctx.user.id, **args)
     return RPCResponse(**data).json_response()
+
+
+@routes.get("/certificates/<serial_number:str>")
+@openapi.definition(
+    secured="token",
+)
+async def view_certificate(request, serial_number: str):
+    async with request.app.ctx.pki() as service:
+        data = await service.get_certificate(request.ctx.user.id, serial_number)
+    return RPCResponse(**data).json_response()
