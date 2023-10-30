@@ -1,11 +1,13 @@
 import uuid
 import pydantic
 import typing as t
-from sanic.response import json
+from sanic.response import json, raw
 from sanic_ext import validate, openapi
 from sanic import Blueprint
 from cryptography import x509
+from cryptography.x509 import ocsp, load_pem_x509_certificates
 from functools import cached_property
+from cryptography.hazmat.primitives import hashes, serialization
 from .rpc import RPCUnavailableError, RPCResponse
 from .validation import validate_json, validation_errors_definition
 
@@ -125,7 +127,7 @@ async def new_certificate(request, body: Identity):
             request.ctx.user.id,
             body.rfc4514_string
         )
-    return RPCResponse(**data).json_response()
+    return RPCResponse(code=data['code'], data=data['body']).json_response()
 
 
 @routes.post("/certificates")
@@ -136,8 +138,10 @@ async def new_certificate(request, body: Identity):
 async def all_certificates(request, body: CertificatesListing):
     async with request.app.ctx.pki() as service:
         args = body.dict()
-        data = await service.account_certificates(request.ctx.user.id, **args)
-    return RPCResponse(**data).json_response()
+        data = await service.list_certificates(
+            request.ctx.user.id, **args
+        )
+    return RPCResponse(code=data['code'], data=data['body']).json_response()
 
 
 @routes.get("/certificates/<serial_number:str>")
@@ -147,4 +151,36 @@ async def all_certificates(request, body: CertificatesListing):
 async def view_certificate(request, serial_number: str):
     async with request.app.ctx.pki() as service:
         data = await service.get_certificate(request.ctx.user.id, serial_number)
-    return RPCResponse(**data).json_response()
+    return RPCResponse(code=data['code'], data=data['body']).json_response()
+
+
+@routes.get("/certificates/<serial_number:str>/pem")
+@openapi.definition(
+    secured="token",
+)
+async def certificate_pem(request, serial_number: str):
+    async with request.app.ctx.pki() as service:
+        data = await service.get_certificate_pem(
+            request.ctx.user.id, serial_number)
+    return raw(data['body'],
+               headers={'Content-Type': 'application/x-pem-file'})
+
+
+@routes.get("/certificates/<serial_number:str>/status")
+@openapi.definition(
+    secured="token",
+)
+async def certificate_status(request, serial_number: str):
+    async with request.app.ctx.pki() as service:
+        data = await service.get_certificate_pem(
+            request.ctx.user.id, serial_number)
+
+    certs = load_pem_x509_certificates(data['body'])
+    builder = ocsp.OCSPRequestBuilder()
+    builder = builder.add_certificate(certs[0], certs[1], hashes.SHA256())
+    req = builder.build()
+    data = req.public_bytes(serialization.Encoding.DER)
+    async with request.app.ctx.pki() as service:
+        data = await service.certificate_ocsp(data)
+    return raw(data['body'],
+               headers={'Content-Type': 'application/x-der-file'})

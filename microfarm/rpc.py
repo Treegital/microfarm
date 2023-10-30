@@ -33,12 +33,12 @@ class RPCUnavailableError(pydantic.BaseModel):
 
 class RPCResponse(pydantic.BaseModel):
     code: int = pydantic.Field(ge=99, le=700)
-    message: str = ''
-    data: dict = pydantic.Field(default_factory=dict)
+    metadata: dict = pydantic.Field(default_factory=dict)
+    data: dict | list | str | int | None = None
 
     def json_response(self):
         body = {
-            'message': self.message,
+            'metadata': self.metadata,
             'data': self.data
         }
         if self.code < 400:

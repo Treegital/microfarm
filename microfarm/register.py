@@ -95,6 +95,6 @@ async def login(request, body: Login):
 
     jwt_response = RPCResponse(**data)
     if jwt_response.success:
-        jwt_response.data['identity'] = creds_response.data
+        jwt_response.metadata['identity'] = creds_response.data
 
     return jwt_response.json_response()
