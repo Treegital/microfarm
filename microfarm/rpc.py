@@ -31,38 +31,6 @@ class RPCUnavailableError(pydantic.BaseModel):
     description: str
 
 
-class RPCResponse(pydantic.BaseModel):
-    code: int = pydantic.Field(ge=99, le=700)
-    metadata: dict = pydantic.Field(default_factory=dict)
-    data: dict | list | str | int | None = None
-
-    def json_response(self):
-        body = {
-            'metadata': self.metadata,
-            'data': self.data
-        }
-        if self.code < 400:
-            return json(body, status=200)
-        if self.code < 500:
-            return json(body, status=422)
-        if self.code < 600:
-            return json(body, status=502)
-        if self.code < 700:
-            return json(body, status=502)
-
-    @property
-    def success(self):
-        return self.code >= 200 and self.code <= 299
-
-    @property
-    def pending(self):
-        return self.code >= 300 and self.code <= 399
-
-    @property
-    def error(self):
-        return self.code >= 400
-
-
 def rpcservice(name: str, bind: str):
 
     @asynccontextmanager

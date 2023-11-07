@@ -1,14 +1,29 @@
 import jwt
 import typing as t
-from dataclasses import dataclass
 from sanic import HTTPResponse
 
 
-@dataclass
-class User:
+class User(dict):
     id: str
+    exp: int
     email: str
-    metadata: dict
+    name: str
+
+    @property
+    def id(self) -> str:
+        return self['id']
+
+    @property
+    def name(self) -> str:
+        return self['name']
+
+    @property
+    def email(self) -> str:
+        return self['email']
+
+    @property
+    def exp(self) -> int:
+        return self['exp']
 
 
 async def jwt_auth(request) -> t.Optional[HTTPResponse]:
@@ -26,11 +41,7 @@ async def jwt_auth(request) -> t.Optional[HTTPResponse]:
             request.app.config['jwt_public_key'],
             algorithms=["RS256"]
         )
-        request.ctx.user = User(
-            id=userdata['id'],
-            email=userdata['email'],
-            metadata=userdata
-        )
+        request.ctx.user = User(userdata)
     except jwt.exceptions.InvalidTokenError:
         # generic error, it catches all invalidities
         return HTTPResponse(status=403)

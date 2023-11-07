@@ -1,14 +1,14 @@
 import uuid
 import pydantic
 import typing as t
-from sanic.response import json, raw
+from sanic.response import json, raw, empty
 from sanic_ext import validate, openapi
 from sanic import Blueprint
 from cryptography import x509
 from cryptography.x509 import ocsp, load_pem_x509_certificates
 from functools import cached_property
 from cryptography.hazmat.primitives import hashes, serialization
-from .rpc import RPCUnavailableError, RPCResponse
+from .rpc import RPCUnavailableError
 from .validation import validate_json, validation_errors_definition
 
 
@@ -127,7 +127,10 @@ async def new_certificate(request, body: Identity):
             request.ctx.user.id,
             body.rfc4514_string
         )
-    return RPCResponse(code=data['code'], data=data['body']).json_response()
+    if data['code'] == 201:
+        return json(status=201, body=data['body'])
+
+    raise NotImplementedError(f'Unknown response type: {data}')
 
 
 @routes.post("/certificates")
@@ -141,7 +144,11 @@ async def all_certificates(request, body: CertificatesListing):
         data = await service.list_certificates(
             request.ctx.user.id, **args
         )
-    return RPCResponse(code=data['code'], data=data['body']).json_response()
+
+    if data['code'] == 200:
+        return json(body=data['body'])
+
+    raise NotImplementedError(f'Unknown response type: {data}')
 
 
 @routes.get("/certificates/<serial_number:str>")
@@ -150,8 +157,18 @@ async def all_certificates(request, body: CertificatesListing):
 )
 async def view_certificate(request, serial_number: str):
     async with request.app.ctx.pki() as service:
-        data = await service.get_certificate(request.ctx.user.id, serial_number)
-    return RPCResponse(code=data['code'], data=data['body']).json_response()
+        data = await service.get_certificate(
+            request.ctx.user.id,
+            serial_number
+        )
+
+    if data['code'] == 404:
+        return empty(status=403)
+
+    if data['code'] == 200:
+        return json(body=data['body'])
+
+    raise NotImplementedError(f'Unknown response type: {data}')
 
 
 @routes.get("/certificates/<serial_number:str>/pem")
@@ -162,8 +179,16 @@ async def certificate_pem(request, serial_number: str):
     async with request.app.ctx.pki() as service:
         data = await service.get_certificate_pem(
             request.ctx.user.id, serial_number)
-    return raw(data['body'],
-               headers={'Content-Type': 'application/x-pem-file'})
+
+    if data['code'] == 404:
+        return empty(status=403)
+
+    elif data['code'] == 200:
+        return raw(
+            data['body'],
+            headers={'Content-Type': 'application/x-pem-file'})
+
+    raise NotImplementedError(f'Unknown response type: {data}')
 
 
 @routes.get("/certificates/<serial_number:str>/status")
@@ -182,5 +207,12 @@ async def certificate_status(request, serial_number: str):
     data = req.public_bytes(serialization.Encoding.DER)
     async with request.app.ctx.pki() as service:
         data = await service.certificate_ocsp(data)
-    return raw(data['body'],
-               headers={'Content-Type': 'application/x-der-file'})
+
+    if data['code'] == 404:
+        return empty(status=403)
+
+    elif data['code'] == 200:
+        return raw(data['body'],
+                   headers={'Content-Type': 'application/x-der-file'})
+
+    raise NotImplementedError(f'Unknown response type: {data}')
