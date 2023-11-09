@@ -139,6 +139,7 @@ async def new_certificate(request, body: Identity):
 )
 @validate_json(CertificatesListing)
 async def all_certificates(request, body: CertificatesListing):
+
     async with request.app.ctx.pki() as service:
         args = body.dict()
         data = await service.list_certificates(
