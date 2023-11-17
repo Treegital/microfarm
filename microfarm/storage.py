@@ -1,4 +1,5 @@
 import io
+import toml
 import uuid
 import pydantic
 import minio
@@ -38,34 +39,18 @@ class FoldersListing(pydantic.BaseModel):
 
 class Streamer:
 
-    def __init__(self, queue):
-        self.queue = queue
+    def __init__(self, stream):
+        self.stream = stream
 
     async def read(self, size: int):
-        chunk = await self.queue.get()
-        self.queue.task_done()
-        if chunk is EOF:
-            return
-        return chunk
-
-
-async def consume(queue, stream):
-    hasher = hashes.Hash(hashes.SHA256())
-    while True:
-        chunk = await stream.read()
-        if chunk is None:
-            await queue.put(EOF)
-            break
-        hasher.update(chunk)
-        await queue.put(chunk)
-    return hasher.finalize().hex()
+        return await self.stream.read()
 
 
 @storage.put("/folders/upload/<folder_id:str>", stream=True)
 @openapi.definition(
     secured="token",
 )
-@cors(allow_headers=['Authorization', 'Content-Type', 'X-Original-Name', 'X-Folder-Definition'])
+@cors(allow_headers=['Authorization', 'Content-Type', 'X-Original-Name', 'X-Folder-Definition', 'X-Checksum-SHA256'])
 async def upload_to_folder(request, folder_id: str):
     userid = request.ctx.user.id
     storage = request.app.ctx.minio
@@ -73,6 +58,11 @@ async def upload_to_folder(request, folder_id: str):
     if not exists:
         print(f"Bucket {userid} does not exist.")
         await storage.make_bucket(userid)
+
+
+    checksum = request.headers.get('x-checksum-sha256')
+    if checksum is None:
+        return raw(status=422, body="SHA256 checkum is missing.")
 
     objname = f'{folder_id}/'
     stats = await storage.stat_object(userid, objname)
@@ -88,24 +78,20 @@ async def upload_to_folder(request, folder_id: str):
         else:
             raise NotImplementedError('Unknown folder definition.')
 
-    queue = asyncio.Queue(3)
-    streamer = Streamer(queue)
-    _, hashing = await asyncio.gather(
-        storage.put_object(
-            userid, objname,
-            streamer, -1, part_size=5242880,
-            content_type=request.headers['content-type'],
-            metadata={
-                "x-amz-meta-filename": filename
-            }
-        ),
-        consume(queue, request.stream)
+    put_info = await storage.put_object(
+        userid, objname,
+        Streamer(request.stream), -1, part_size=5242880,
+        content_type=request.headers['content-type'],
+        metadata={
+            "x-amz-checksum-sha256": checksum,
+            "x-amz-meta-filename": filename,
+        }
     )
-
-    tags = Tags(for_object=True)
-    tags['hash'] = hashing
-    await storage.set_object_tags(userid, objname, tags)
-    return raw(status=200, body=filename)
+    return json(status=200, body={
+        'etag': put_info.etag,
+        'userid': put_info.bucket_name,
+        'fileid': put_info.object_name
+    })
 
 
 @storage.post("/folders/new")
@@ -155,7 +141,10 @@ async def get_folder(request, folder_id: str):
     text_content = b''
     text_content_id = objname + 'body'
     for child in children:
-        stat = await storage.stat_object(userid, child.object_name)
+        stat = await storage.stat_object(
+            userid, child.object_name, request_headers={
+                "x-amz-checksum-mode": "ENABLED"
+            })
         if child.object_name == text_content_id:
             async with aiohttp.ClientSession() as session:
                 resp = await storage.get_object(
@@ -176,8 +165,10 @@ async def get_folder(request, folder_id: str):
         'body': text_content.decode('utf-8'),
         'contents': [{
             'id': stats.object_name,
+            'checksum': stats.metadata['x-amz-checksum-sha256'],
             'name': stats.metadata['x-amz-meta-filename'],
             'content_type': stats.metadata['Content-Type'],
+            'size': stats.size,
             'modified': dateutil.parser.parse(
                 stats.metadata['Last-Modified']
             ),
@@ -187,6 +178,45 @@ async def get_folder(request, folder_id: str):
         } for stats in contents]
     }
     return json(status=200, body=body)
+
+
+@storage.get("/folders/view/<folder_id:str>/summary")
+@openapi.definition(
+    secured="token",
+)
+async def get_folder_summary(request, folder_id: str):
+    userid = request.ctx.user.id
+    storage = request.app.ctx.minio
+
+    exists = await storage.bucket_exists(userid)
+    if not exists:
+        return empty(status=404)
+
+    summary = {
+        'userid': userid,
+        'id': folder_id
+    }
+
+    objname = f'{folder_id}/'
+    children = await storage.list_objects(
+        userid, prefix=objname, start_after=objname
+    )
+    if children:
+        contents = []
+        for child in children:
+            stats = await storage.stat_object(userid, child.object_name)
+            contents.append({
+                'id': stats.object_name,
+                'checksum': stats.metadata['x-amz-meta-checksum-sha256'],
+                'name': stats.metadata['x-amz-meta-filename'],
+                'content_type': stats.metadata['Content-Type'],
+                'size': stats.size,
+                'modified': stats.metadata['Last-Modified'],
+                'created': stats.metadata['Date']
+            })
+        summary['content'] = contents
+
+    return raw(status=200, body=toml.dumps(summary))
 
 
 @storage.post("/folders")

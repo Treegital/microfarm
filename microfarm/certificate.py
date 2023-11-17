@@ -152,6 +152,25 @@ async def all_certificates(request, body: CertificatesListing):
     raise NotImplementedError(f'Unknown response type: {data}')
 
 
+@routes.post("/valid_certificates")
+@openapi.definition(
+    secured="token",
+)
+@validate_json(CertificatesListing)
+async def valid_certificates(request, body: CertificatesListing):
+
+    async with request.app.ctx.pki() as service:
+        args = body.dict()
+        data = await service.list_valid_certificates(
+            request.ctx.user.id, **args
+        )
+
+    if data['code'] == 200:
+        return json(body=data['body'])
+
+    raise NotImplementedError(f'Unknown response type: {data}')
+
+
 @routes.get("/certificates/<serial_number:str>")
 @openapi.definition(
     secured="token",
