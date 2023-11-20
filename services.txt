@@ -2,11 +2,11 @@ sanic
 sanic[ext]
 pydantic[email]
 
--e git+https://github.com/Treegital/microfarm.websockets.git#egg=microfarm_websockets
--e git+https://github.com/Treegital/microfarm.pki.git#egg=microfarm_pki
--e git+https://github.com/Treegital/microfarm.jwt.git#egg=microfarm_jwt
--e git+https://github.com/Treegital/microfarm.accounts.git#egg=microfarm_accounts
--e git+https://github.com/Treegital/microfarm.courrier.git#egg=microfarm_courrier
+-e git+ssh://github.com/Treegital/microfarm.websockets.git#egg=microfarm_websockets
+-e git+ssh://github.com/Treegital/microfarm.pki.git#egg=microfarm_pki
+-e git+ssh://github.com/Treegital/microfarm.jwt.git#egg=microfarm_jwt
+-e git+ssh://github.com/Treegital/microfarm.accounts.git#egg=microfarm_accounts
+-e git+ssh://github.com/Treegital/microfarm.courrier.git#egg=microfarm_courrier
 
--e git+https://github.com/Treegital/branding_iron.git#egg=branding_iron
--e git+https://github.com/HorsemanWSGI/postrider.git#egg=postrider
+-e git+ssh://github.com/Treegital/branding_iron.git#egg=branding_iron
+-e git+ssh://github.com/HorsemanWSGI/postrider.git#egg=postrider

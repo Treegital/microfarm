@@ -36,7 +36,7 @@ def rpcservice(name: str, bind: str):
     @asynccontextmanager
     async def service():
         try:
-            client = await rpc.connect_rpc(connect=bind, timeout=0.5)
+            client = await rpc.connect_rpc(connect=bind, timeout=2)
             try:
                 yield client.call
             finally:
