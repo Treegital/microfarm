@@ -204,10 +204,13 @@ async def get_folder_summary(request, folder_id: str):
     if children:
         contents = []
         for child in children:
-            stats = await storage.stat_object(userid, child.object_name)
+            stats = await storage.stat_object(
+                userid, child.object_name, request_headers={
+                "x-amz-checksum-mode": "ENABLED"
+            })
             contents.append({
                 'id': stats.object_name,
-                'checksum': stats.metadata['x-amz-meta-checksum-sha256'],
+                'checksum': stats.metadata['x-amz-checksum-sha256'],
                 'name': stats.metadata['x-amz-meta-filename'],
                 'content_type': stats.metadata['Content-Type'],
                 'size': stats.size,
@@ -229,32 +232,36 @@ async def list_folders(request, body: FoldersListing):
     storage = request.app.ctx.minio
 
     exists = await storage.bucket_exists(userid)
-    if not exists:
-        return json(status=200, body=[])
-
-    objects = await storage.list_objects(userid)
     folders = []
-    for obj in objects:
-        if obj.is_dir:
-            path = pathlib.PosixPath(obj.object_name)
-            stats = await storage.stat_object(userid, obj.object_name)
-            folders.append({
-                'id': path.name,
-                'name': stats.metadata['x-amz-meta-title'],
-                'modified': dateutil.parser.parse(
-                    stats.metadata['Last-Modified']
-                ),
-                'created': dateutil.parser.parse(
-                    stats.metadata['Date']
-                ),
-            })
+    if exists:
+        objects = await storage.list_objects(userid)
+        folders = []
+        for obj in objects:
+            if obj.is_dir:
+                path = pathlib.PosixPath(obj.object_name)
+                stats = await storage.stat_object(
+                    userid, obj.object_name, request_headers={
+                        "x-amz-checksum-mode": "ENABLED"
+                    }
+                )
+                folders.append({
+                    'id': path.name,
+                    'name': stats.metadata['x-amz-meta-title'],
+                    'modified': dateutil.parser.parse(
+                        stats.metadata['Last-Modified']
+                    ),
+                    'created': dateutil.parser.parse(
+                        stats.metadata['Date']
+                    ),
+                })
 
-    if body.offset and body.limit:
-        folders = folders[body.offset: body.offset+body.limit]
-    elif body.offset:
-        folders = folders[body.offset:]
-    elif body.limit:
-        folders[:body.limit]
+        if body.offset and body.limit:
+            folders = folders[body.offset: body.offset+body.limit]
+        elif body.offset:
+            folders = folders[body.offset:]
+        elif body.limit:
+            folders[:body.limit]
+
     return json(body={
         "metadata": {
             "total": len(folders),
