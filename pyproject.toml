@@ -18,7 +18,11 @@ dependencies = [
   "pyjwt",
   "sanic",
   "sanic[ext]",
-  "miniopy-async >= 1.17"
+  "miniopy-async >= 1.17",
+  "minio",
+  "orjson",
+  "toml",
+  "aiohttp"
 ]
 
 [tool.setuptools.packages.find]
