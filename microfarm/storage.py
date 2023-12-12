@@ -8,6 +8,8 @@ import typing as t
 import dateutil.parser
 import asyncio
 import aiohttp
+from datetime import timedelta
+from base64 import b64encode
 from urllib.parse import unquote
 from sanic.response import json, raw, empty
 from sanic_ext import openapi, cors
@@ -22,8 +24,19 @@ EOF = object()
 storage = Blueprint('storage')
 
 
+def sha256hash(bindata):
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(bindata)
+    return b64encode(digest.finalize())
+
+
 class FolderCreation(pydantic.BaseModel):
     name: str
+
+
+class FolderSignature(pydantic.BaseModel):
+    certificate: str
+    secret: bytes
 
 
 class FieldOrdering(pydantic.BaseModel):
@@ -94,6 +107,83 @@ async def upload_to_folder(request, folder_id: str):
     })
 
 
+async def folder_fummary(
+        storage, userid: str, folder_name: str, with_download: bool = False):
+    objname = f'{folder_name}/'
+    stats = await storage.stat_object(userid, objname)
+    children = await storage.list_objects(
+        userid, prefix=objname, start_after=objname
+    )
+    summary = {
+        'userid': userid,
+        'id': folder_name,
+        'name': stats.metadata['x-amz-meta-title'],
+        'modified': dateutil.parser.parse(
+            stats.metadata['Last-Modified']
+        ),
+        'created': dateutil.parser.parse(
+            stats.metadata['Date']
+        )
+    }
+    contents = {}
+    if children:
+        for child in children:
+            stats = await storage.stat_object(
+                userid, child.object_name, request_headers={
+                "x-amz-checksum-mode": "ENABLED"
+            })
+            contents[child.object_name] = {
+                'checksum': stats.metadata['x-amz-checksum-sha256'],
+                'name': stats.metadata['x-amz-meta-filename'],
+                'content_type': stats.metadata['Content-Type'],
+                'size': stats.size,
+                'modified': stats.metadata['Last-Modified'],
+                'created': stats.metadata['Date']
+            }
+            if with_download:
+                contents[stats.object_name]['link'] = await storage.presigned_get_object(
+                    userid, stats.object_name,
+                    expires=timedelta(minutes=20)
+                )
+    summary['files'] = contents
+    summary['locked'] = objname + 'manifest' in contents
+    summary['signed'] = objname + 'signature' in contents
+    return summary
+
+
+@storage.get("/folders/lock/<folder_id:str>")
+@openapi.definition(
+    secured="token",
+)
+@cors(allow_headers=['Authorization', 'Content-Type'])
+async def lock_folder(request, folder_id: str):
+    userid = request.ctx.user.id
+    storage = request.app.ctx.minio
+    exists = await storage.bucket_exists(userid)
+    if not exists:
+        return empty(status=404)
+
+    summary = await folder_fummary(storage, userid, folder_id)
+    manifest_id = f'{folder_id}/manifest'
+    if manifest_id in summary['files']:
+        # Already locked.
+        return empty(status=400)
+
+    manifest = toml.dumps(summary).encode('utf-8')
+    checksum = sha256hash(manifest).decode('utf-8')
+
+    put_info = await storage.put_object(
+        userid, manifest_id,
+        io.BytesIO(manifest), len(manifest),
+        content_type="application/toml",
+        metadata={
+            "x-amz-checksum-sha256": checksum,
+            "x-amz-meta-filename": "manifest.toml"
+        }
+    )
+    return empty(status=200)
+
+
 @storage.post("/folders/new")
 @openapi.definition(
     secured="token",
@@ -119,6 +209,53 @@ async def new_folder(request, body: FolderCreation):
     return raw(status=200, body=folderid)
 
 
+@storage.post("/folders/sign/<folder_id:str>")
+@openapi.definition(
+    secured="token",
+)
+@validate_json(FolderSignature)
+async def sign_folder(request, folder_id: str, body: FolderCreation):
+    userid = request.ctx.user.id
+    storage = request.app.ctx.minio
+
+    exists = await storage.bucket_exists(userid)
+    if not exists:
+        print(f"Bucket {userid} does not exist.")
+        await storage.make_bucket(userid)
+
+    manifest_id = f'{folder_id}/manifest'
+    async with aiohttp.ClientSession() as sess:
+        resp = await storage.get_object(userid, manifest_id, session=sess)
+        manifest = await resp.read()
+
+    async with request.app.ctx.pki() as service:
+        signature = await service.sign(
+            request.ctx.user.id,
+            manifest,
+            body.certificate,
+            body.secret
+        )
+
+    if signature['code'] == 400:
+        return empty(status=400)
+
+    if signature['code'] == 200:
+        p7s = signature['body']
+        checksum = sha256hash(p7s).decode('utf-8')
+        put_info = await storage.put_object(
+            userid, f'{folder_id}/signature',
+            io.BytesIO(p7s), len(p7s),
+            content_type="application/pkcs7-signature",
+            metadata={
+                "x-amz-checksum-sha256": checksum,
+                "x-amz-meta-filename": "signature.p7s"
+            }
+        )
+        return empty(status=200)
+
+    raise NotImplementedError('Unknown response code.')
+
+
 @storage.get("/folders/view/<folder_id:str>")
 @openapi.definition(
     secured="token",
@@ -131,53 +268,16 @@ async def get_folder(request, folder_id: str):
     if not exists:
         return empty(status=404)
 
-    objname = f'{folder_id}/'
-    stats = await storage.stat_object(userid, objname)
-    children = await storage.list_objects(
-        userid, prefix=objname, start_after=objname
-    )
-
-    contents = []
+    summary = await folder_fummary(storage, userid, folder_id, with_download=True)
+    body_id = f'{folder_id}/body'
     text_content = b''
-    text_content_id = objname + 'body'
-    for child in children:
-        stat = await storage.stat_object(
-            userid, child.object_name, request_headers={
-                "x-amz-checksum-mode": "ENABLED"
-            })
-        if child.object_name == text_content_id:
-            async with aiohttp.ClientSession() as session:
-                resp = await storage.get_object(
-                    userid, child.object_name, session=session)
-                text_content = await resp.read()
+    if body_id in summary['files']:
+        async with aiohttp.ClientSession() as sess:
+            resp = await storage.get_object(userid, body_id, session=sess)
+            text_content = await resp.read()
 
-        contents.append(stat)
-
-    body = {
-        'id': folder_id,
-        'name': stats.metadata['x-amz-meta-title'],
-        'modified': dateutil.parser.parse(
-            stats.metadata['Last-Modified']
-        ),
-        'created': dateutil.parser.parse(
-            stats.metadata['Date']
-        ),
-        'body': text_content.decode('utf-8'),
-        'contents': [{
-            'id': stats.object_name,
-            'checksum': stats.metadata['x-amz-checksum-sha256'],
-            'name': stats.metadata['x-amz-meta-filename'],
-            'content_type': stats.metadata['Content-Type'],
-            'size': stats.size,
-            'modified': dateutil.parser.parse(
-                stats.metadata['Last-Modified']
-            ),
-            'created': dateutil.parser.parse(
-                stats.metadata['Date']
-            )
-        } for stats in contents]
-    }
-    return json(status=200, body=body)
+    summary['body'] = text_content.decode('utf-8')
+    return json(status=200, body=summary)
 
 
 @storage.get("/folders/view/<folder_id:str>/summary")
@@ -192,33 +292,7 @@ async def get_folder_summary(request, folder_id: str):
     if not exists:
         return empty(status=404)
 
-    summary = {
-        'userid': userid,
-        'id': folder_id
-    }
-
-    objname = f'{folder_id}/'
-    children = await storage.list_objects(
-        userid, prefix=objname, start_after=objname
-    )
-    if children:
-        contents = []
-        for child in children:
-            stats = await storage.stat_object(
-                userid, child.object_name, request_headers={
-                "x-amz-checksum-mode": "ENABLED"
-            })
-            contents.append({
-                'id': stats.object_name,
-                'checksum': stats.metadata['x-amz-checksum-sha256'],
-                'name': stats.metadata['x-amz-meta-filename'],
-                'content_type': stats.metadata['Content-Type'],
-                'size': stats.size,
-                'modified': stats.metadata['Last-Modified'],
-                'created': stats.metadata['Date']
-            })
-        summary['content'] = contents
-
+    summary = await folder_fummary(storage, userid, folder_id)
     return raw(status=200, body=toml.dumps(summary))
 
 
